@@ -16,29 +16,33 @@ const sidebarTemplate = document.querySelector("#sidebar-template").innerHTML;
 // Options
 const { username, room } = Qs.parse(location.search, {ignoreQueryPrefix: true});
 
-const autoScroll = () => {
-    // New message content
-    const $newMessage = $messages.lastElementChild
+// Request notification permission when the page loads
+if (Notification.permission === 'default') {
+    Notification.requestPermission();
+}
 
-    // height of new message
-    const newMessageStyle = getComputedStyle($newMessage);
-    const newMessageMargin = parseInt(newMessageStyle.marginBottom)
-    const newMessageHeight = $newMessage.offsetHeight + newMessageMargin;
-
-    // visible height
-    const visibleHeight = $messages.offsetHeight;
-
-    // container height
-    const containerHeight = $messages.scrollHeight;
-
-    // how far have I scrolled?
-    const scrollOffset = $messages.scrollTop + visibleHeight;
-
-    if (containerHeight - newMessageHeight <= scrollOffset){
-        $messages.scrollTop = $messages.scrollHeight
+// Function to show a notification
+function showNotification(title, body) {
+    if (Notification.permission === 'granted') {
+        new Notification(title, { body });
     }
 }
 
+const autoScroll = () => {
+    const $newMessage = $messages.lastElementChild;
+
+    const newMessageStyle = getComputedStyle($newMessage);
+    const newMessageMargin = parseInt(newMessageStyle.marginBottom);
+    const newMessageHeight = $newMessage.offsetHeight + newMessageMargin;
+
+    const visibleHeight = $messages.offsetHeight;
+    const containerHeight = $messages.scrollHeight;
+    const scrollOffset = $messages.scrollTop + visibleHeight;
+
+    if (containerHeight - newMessageHeight <= scrollOffset) {
+        $messages.scrollTop = $messages.scrollHeight;
+    }
+};
 
 socket.on('message', (message) => {
     console.log(message.text);
@@ -48,9 +52,13 @@ socket.on('message', (message) => {
         createdAt: moment(message.createdAt).format('kk:mm a'),
     });
     const htmlObject = document.createElement('div');
-    htmlObject.innerHTML = html
+    htmlObject.innerHTML = html;
     htmlObject.setAttribute('class', 'message');
     $messages.insertAdjacentElement('beforeend', htmlObject);
+    
+    // Show a notification for a new message
+    showNotification(message.username, message.text);
+
     autoScroll();
 });
 
@@ -65,27 +73,24 @@ socket.on('locationMessage', (urlOb) => {
     urlObject.innerHTML = locationLink;
     urlObject.setAttribute('class', 'message');
     $messages.insertAdjacentElement('beforeend', urlObject);
+    
+    // Show a notification for location sharing
+    showNotification(urlOb.username, 'Shared a location');
+
     autoScroll();
 });
 
-socket.on('roomData', ({ room, users}) => {
-    const html = Mustache.render(sidebarTemplate, {
-        room,
-        users
-    })
-    const htmlOb = document.createElement('div');
-    htmlOb.innerHTML = html;
-    // $sidebar.insertAdjacentElement()
+socket.on('roomData', ({ room, users }) => {
+    const html = Mustache.render(sidebarTemplate, { room, users });
     $sidebar.innerHTML = html;
-})
-
+});
 
 $messageForm.addEventListener('submit', (e) => {
     e.preventDefault();
-
     $messageFormButton.setAttribute('disabled', 'disabled');
+
     const message = e.target.elements.message.value;
-    // console.log(message);
+
     socket.emit('sendMessage', message, (error) => {
         $messageFormButton.removeAttribute('disabled');
         $messageFormInput.value = "";
@@ -94,18 +99,18 @@ $messageForm.addEventListener('submit', (e) => {
         if (error) {
             return console.log(error);
         }
-        console.log("message delivered!!");
+        console.log("Message delivered!!");
     });
 });
 
 $locationButton.addEventListener('click', () => {
     $locationButton.setAttribute("disabled", "disabled");
+
     if (!navigator.geolocation) {
-        return alert("Does not Support Location Your Browser!!");
+        return alert("Your browser does not support location sharing!");
     }
 
     navigator.geolocation.getCurrentPosition((position) => {
-        // console.log(position.coords.latitude);
         socket.emit('sendLocation', {
             latitude: position.coords.latitude,
             longitude: position.coords.longitude,
@@ -114,15 +119,13 @@ $locationButton.addEventListener('click', () => {
             if (error) {
                 return console.log(error);
             }
-
             console.log("Location shared!");
         });
-        // socket.emit('sendLocation', position);
     });
 });
 
-socket.emit('join', { username, room}, (error) => {
-    if (error){
+socket.emit('join', { username, room }, (error) => {
+    if (error) {
         alert(error);
         location.href = "/";
     }
